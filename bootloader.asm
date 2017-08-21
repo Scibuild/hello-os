@@ -1,64 +1,35 @@
 [org 0x7c00]
+[bits 16]		;still in 16 bit mode
+mov bp, 0x9000
+mov sp, bp
 
-mov     ax, cs
-mov     ds, ax
-mov     es, ax
-mov     ss, ax
+call switch_to_32pm
+jmp $
 
-mov [BOOT_DRIVE], dl
+switch_to_32pm:
+	cli    ;Turn of interupts
+	lgdt [gdt_descriptor]
+	mov eax, cr0  ;copy the cr0 controll register into eax so we can manipulate it
+	or eax, 0x1		;if first bit is high will enable protected mode
+	mov cr0, eax	; move eax back into cr0
+	jmp KERNEL_EXEC_SEG:flush_regesters		;will jump in 32bit mode
 
-mov bp, 0x9000	;base pointer
-mov sp, bp			;stack pointer
+[bits 32]			;For the compiler to know everything bellow this is 32 bit code
 
-mov bx, 0x9000  ;Where to put the data (the stack)
+flush_regesters:
+	mov ax, KERNEL_DATA_SEG		;registers work differently now
+	mov ds, ax
+	mov ss, ax
+	mov es, ax
+	mov fs, ax
+	mov gs, ax
+	mov ebp, 0x90000 	;Move stack somewhere out of the way
+	mov esp, ebp
 
-mov cl, 2				; sector to read
-mov dl, [BOOT_DRIVE]
-call load_disk
 
-jmp bp
+jmp $
 
-load_disk:
-	;push dx
-	mov ah, 0x02	;The read instruction
-	mov al, 1			;Only read 1 sector
-	mov ch, 0x00  ;Cylinder 0
-	mov dh, 0x00	;Head 0
-	int 0x13
-	jc load_disk_error
-	;pop dx				;interupt overwrote this so we are actually geting the first
-								;character in memory
-	cmp al, 1
-	jne load_disk_error
-	ret
-load_disk_error:
-	mov bx, error_message
-	call print_string
-	jmp $
 
-error_message db "Error!", 0
-
-BOOT_DRIVE: db 0
-
+%include 'gdt.asm'
 times 510 -($-$$) db 0
 dw 0xaa55
-;sector 2
-mov ax, 0x0120
-mov ds, ax
-mov bx, hello
-call print_string
-jmp $
-print_string:
-	push ax
-	mov ah, 0x0e
-print_character_loop:
-	mov al, [bx]
-	cmp al, 0
-	je print_finished
-	int 0x10
-	add bx, 1
-	jmp print_character_loop
-print_finished:
-	pop ax
-	ret
-hello db "Hello World!",10, 13, "How are you? Sorry you cant type yet.", 10, 13, 0
